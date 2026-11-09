@@ -65,6 +65,18 @@ jobs:
           fi
           echo "clean"
 
+      - name: reference docs point at paths that exist
+        # The reference files make path claims about this repo; a rename silently
+        # rots them. (README is excluded: its sample output names illustrative
+        # files like tests/test_totals.py that are not meant to exist here.)
+        run: |
+          fail=0
+          for p in $(grep -rhoE "(evals|scripts|references|assets|tests)/[A-Za-z0-9._/-]+" references/*.md SKILL.md | sort -u); do
+            [ -e "$p" ] || { echo "broken path reference: $p"; fail=1; }
+          done
+          [ $fail = 0 ] && echo "all documented paths resolve"
+          exit $fail
+
       - name: scripts fail gracefully outside a git repository
         run: |
           d=$(mktemp -d)

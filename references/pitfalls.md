@@ -6,7 +6,7 @@ analysis; the rest corrupt individual findings.
 **Every example below is reproducible from the fixtures in `evals/`.** No figure here comes from a
 private repository — run the fixture and watch the failure happen rather than taking an anecdote on
 trust. The two builders are `evals/consolidates-split-identities/files/build-repo.sh` (the
-*history fixture*) and `evals/computes-bird-ownership/files/build-metrics-repo.sh` (the *metrics
+*history fixture*) and `evals/quantifies-knowledge-loss-risk/files/build-metrics-repo.sh` (the *metrics
 fixture*).
 
 ## 1. Analysing a stale ref
