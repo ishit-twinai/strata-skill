@@ -54,14 +54,31 @@ echo
 echo "=== last fetch ==="
 stale=0
 if [ -f .git/FETCH_HEAD ]; then
-  when=$(stat -f '%Sm' .git/FETCH_HEAD 2>/dev/null || stat -c '%y' .git/FETCH_HEAD 2>/dev/null || echo unknown)
-  echo "  $when"
-  # age in days, tolerating either stat flavour
-  now=$(date +%s)
-  mt=$(stat -f '%m' .git/FETCH_HEAD 2>/dev/null || stat -c '%Y' .git/FETCH_HEAD 2>/dev/null || echo "$now")
-  days=$(( (now - mt) / 86400 ))
-  echo "  age: ${days} day(s)"
-  [ "$days" -gt 3 ] && stale=1
+  # `stat` has two incompatible dialects and the trap is that the wrong one does
+  # not fail. GNU `stat -f` means "filesystem info" and exits 0 with a block-size
+  # dump; BSD `stat -f` means "format string". So probing BSD-first succeeds on
+  # Linux with unusable output, which then reaches the arithmetic below as
+  # "Illegal number". Probe GNU first - BSD stat rejects `-c` outright - and
+  # validate the result is actually an integer before trusting it.
+  mt=$(stat -c '%Y' .git/FETCH_HEAD 2>/dev/null) || mt=''
+  case "$mt" in ''|*[!0-9]*) mt=$(stat -f '%m' .git/FETCH_HEAD 2>/dev/null) || mt='' ;; esac
+  case "$mt" in ''|*[!0-9]*) mt='' ;; esac
+
+  when=$(stat -c '%y' .git/FETCH_HEAD 2>/dev/null) || when=''
+  [ -n "$when" ] || when=$(stat -f '%Sm' .git/FETCH_HEAD 2>/dev/null) || when=''
+  echo "  ${when:-unknown}"
+
+  if [ -n "$mt" ]; then
+    now=$(date +%s)
+    days=$(( (now - mt) / 86400 ))
+    echo "  age: ${days} day(s)"
+    [ "$days" -gt 3 ] && stale=1
+  else
+    # Never silently treat an unknown age as fresh: not knowing when you last
+    # fetched is itself a reason to fetch before trusting the refs.
+    echo "  age: unknown (no usable stat on this platform)"
+    stale=1
+  fi
 else
   echo "  never fetched in this clone"
   stale=1

@@ -160,5 +160,11 @@ Four environment traps, every one of which bit during development.
 - **`read -ra` is bash-only.** zsh wants `read -rA`. Avoid shell arrays entirely; the scripts here
   use POSIX constructs only.
 - **macOS has no `timeout`.** Do not reach for it in examples a user might run.
+- **`stat` has two dialects, and the wrong one does not fail.** GNU `stat -f` means
+  *filesystem info* and exits 0 with a block-size dump; BSD `stat -f` means *format string*.
+  A `stat -f ... || stat -c ...` fallback therefore works on macOS and silently produces
+  garbage on Linux, which surfaces later as `Illegal number` in arithmetic. Probe GNU (`-c`)
+  first — BSD rejects it outright — and validate the result is an integer before using it.
+  CI on two operating systems caught this on its first run; one platform cannot.
 - **`grep -c` exits non-zero when the count is zero**, which silently breaks `cmd && cmd` chains
   and truncates a report mid-way. Terminate with `|| true`, or do not chain on a count.
