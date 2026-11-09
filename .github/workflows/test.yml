@@ -1,0 +1,76 @@
+name: tests
+
+# The known-answer suite is the thing worth gating on: four arithmetic bugs
+# shipped in first drafts of these metrics, and the fixtures exist to stop them
+# coming back. Running it on every push is cheap - no dependencies, no network,
+# a few seconds - and it has already caught a real regression during development.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  known-answer-suite:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # The scripts are POSIX sh + Node stdlib, but the shell traps they avoid
+        # (no arrays, no `timeout`, no chaining on `grep -c`) are exactly the ones
+        # that differ between macOS and Linux. Run both so a regression in either
+        # is visible.
+        os: [ubuntu-latest, macos-latest]
+        node: ['20', '22']
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: git identity for the fixtures
+        # The fixtures build real repos with real commits, which git refuses to
+        # create without an identity configured.
+        run: |
+          git config --global user.email "ci@example.test"
+          git config --global user.name "CI"
+          git config --global init.defaultBranch main
+
+      - name: versions
+        run: |
+          node --version
+          git --version
+          sh --version 2>/dev/null || echo "sh: POSIX"
+
+      - name: known-answer suite
+        run: node tests/run.mjs
+
+      - name: scripts are executable and carry shebangs
+        run: |
+          fail=0
+          for f in scripts/*.sh scripts/*.mjs tests/*.mjs; do
+            head -1 "$f" | grep -q '^#!' || { echo "missing shebang: $f"; fail=1; }
+            [ -x "$f" ] || { echo "not executable: $f"; fail=1; }
+          done
+          exit $fail
+
+      - name: no absolute developer paths committed
+        run: |
+          if grep -rn "/Users/\|/home/[a-z]" --include="*.sh" --include="*.mjs" --include="*.md" . ; then
+            echo "absolute path found - these must not be committed"
+            exit 1
+          fi
+          echo "clean"
+
+      - name: scripts fail gracefully outside a git repository
+        run: |
+          d=$(mktemp -d)
+          for s in dep-graph brief risk-graph ownership-metrics knowledge-at-risk; do
+            out=$(node "scripts/$s.mjs" x --repo "$d" --blame /dev/null 2>&1 || true)
+            echo "$out" | head -1 | grep -q "^strata: " \
+              || { echo "$s.mjs did not fail cleanly:"; echo "$out" | head -3; exit 1; }
+          done
+          echo "all entrypoints fail with a message, not a stack trace"

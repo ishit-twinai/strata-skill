@@ -1,0 +1,20 @@
+schema_version: "1.1"
+name: separates-read-set-from-impact-set
+expected_outcome: |
+  The response anchors on alpha.py and then distinguishes two different things
+  rather than merging them: what to READ to make the change safely, and what
+  would BREAK as a consequence.
+
+  It surfaces beta.py as co-changing with alpha.py without any dependency
+  relationship explaining it - the fixture plants 6 joint commits between the two
+  and no import edge either way. That is the signal the reader most needs and the
+  one a purely static tool cannot see.
+
+  It does NOT claim beta.py imports alpha.py or vice versa, and it does not
+  present the co-change as proof of a dependency; co-change is correlation.
+
+  Ownership for alpha.py is attributed to its sole contributor, and the response
+  notes the single-contributor risk rather than presenting it as healthy.
+
+context:
+  scaffold_script: place-files.sh

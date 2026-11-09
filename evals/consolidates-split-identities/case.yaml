@@ -1,0 +1,17 @@
+schema_version: "1.1"
+name: consolidates-split-identities
+expected_outcome: |
+  The response reports THREE contributors (Ada, Grace, Alan), not six, having
+  recognised that each person commits under more than one git identity.
+  Per-person commit counts are Ada 5, Grace 5, Alan 4, against a repo total of 14
+  across all refs.
+  The figures come from a confirmed identity mapping with no identity left to fall
+  through under its own raw git name. Note that per-identity counts adding up to
+  the repo total proves nothing on its own, since an unmapped identity is still
+  counted, just under the wrong name.
+  Ownership is described per person (Ada: server/db/auth/config, Grace: app.js and
+  charts, Alan: analytics/report/significance), rather than concluding from churn
+  that everyone owns app.js.
+
+context:
+  scaffold_script: place-files.sh

@@ -1,0 +1,21 @@
+schema_version: "1.1"
+name: finds-work-stranded-off-mainline
+expected_outcome: |
+  The work exists but NOT on the checked-out branch, so a search of the working
+  tree alone finds nothing. The response must look beyond the current checkout.
+
+  Ground truth: significance.py and NOTES.md were added by Alan Turing in two
+  commits on feature/pending. That branch has never been merged — both commits
+  are absent from main and from origin/main.
+
+  A correct response: locates the work on feature/pending, names Alan as its
+  author, and states plainly that it is NOT in the mainline. It should draw the
+  consequence for someone wanting to build on it — the branch must be merged or
+  rebased first, and it was authored against a main that has since moved on.
+
+  Reporting "no significance-testing work exists here" is a failure: the files
+  are real and reachable, just not from the checked-out branch. So is describing
+  significance.py as part of the codebase without noting it is unmerged.
+
+context:
+  scaffold_script: place-files.sh

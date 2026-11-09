@@ -1,0 +1,13 @@
+# eval runs write scored results and full transcripts here; they are machine- and
+# run-specific, often large, and can contain repository content from whatever was
+# analysed - never commit them
+evals/results/
+
+# generated analysis output
+graphify-out/
+*.tsv
+graph.json
+blame.tsv
+
+.DS_Store
+node_modules/

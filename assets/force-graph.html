@@ -1,0 +1,522 @@
+<title>Dependency Graph</title>
+<!--
+  strata/assets/force-graph.html — force-directed dependency graph template.
+
+  HOW TO USE
+  1. Copy this file.
+  2. Replace the __STRATA_DATA__ block below with your own META / GROUPS / OWNERS / N / E.
+  3. Validate:  node scripts/validate-graph.mjs <your-file>.html
+  4. Publish it, or paste the <section> + <style> + <script> into a larger page.
+
+  DATA FORMAT
+    META   = { title, ref, generated, note }        strings shown in the header
+    GROUPS = { key: "Label", ... }                  structural layers, in display order
+    OWNERS = { key: "Label", ... }                  people; use "none" for external nodes
+    N      = [ [label, groupKey, ownerKey, description], ... ]
+    E      = [ [fromIndex, toIndex], ... ]          indices into N
+
+  COLOUR
+    Up to 4 groups/owners use the validated categorical palette below (lightness band,
+    chroma floor, CVD separation and contrast all checked in light and dark). Beyond 4
+    the palette cycles, which breaks colourblind separation — at that point merge
+    categories or facet instead, rather than inventing hues.
+
+  DEGREE
+    Node radius is proportional to total degree, so hubs read at a glance. Labels show
+    for well-connected nodes always, and for whatever is hovered or selected.
+-->
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  :root {
+    --bg: #f4f6f9; --surface: #fff; --surface-2: #eceff4;
+    --border: #dce1e9; --border-2: #c6cdd9;
+    --ink: #13161c; --ink-2: #474f5d; --ink-3: #747c8b;
+    --cat-1: #2f62c4; --cat-2: #c2521a; --cat-3: #0f8f6b; --cat-4: #9b3f8c;
+    /* semantic, deliberately NOT part of the categorical set: surprise edges and
+       departure warnings must stay distinguishable whatever the colour mode */
+    --signal: #b07400; --alarm: #ab2a20;
+    --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+    --sans: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0e1116; --surface: #161a21; --surface-2: #1d222b;
+      --border: #262c36; --border-2: #38404d;
+      --ink: #e9ecf2; --ink-2: #a3abb9; --ink-3: #727b8a;
+      --cat-1: #4f82d8; --cat-2: #cf6b26; --cat-3: #27a37f; --cat-4: #b659aa;
+      --signal: #d6a13a; --alarm: #ef9289;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0e1116; --surface: #161a21; --surface-2: #1d222b;
+    --border: #262c36; --border-2: #38404d;
+    --ink: #e9ecf2; --ink-2: #a3abb9; --ink-3: #727b8a;
+    --cat-1: #4f82d8; --cat-2: #cf6b26; --cat-3: #27a37f; --cat-4: #b659aa;
+    --signal: #d6a13a; --alarm: #ef9289;
+  }
+  * { box-sizing: border-box; }
+  body {
+    background: var(--bg); color: var(--ink); font-family: var(--sans); font-size: 15px;
+    line-height: 1.6; margin: 0; padding-inline: 20px; padding-block: 36px 60px;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; }
+  .eyebrow {
+    font-family: var(--mono); font-size: 11px; letter-spacing: .13em; text-transform: uppercase;
+    color: var(--ink-3); margin: 0 0 12px;
+  }
+  h1 { font-size: clamp(26px, 4.4vw, 38px); line-height: 1.08; margin: 0 0 14px; letter-spacing: -.02em; text-wrap: balance; }
+  .basis { font-family: var(--mono); font-size: 12.5px; color: var(--ink-2); display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 0 0 28px; }
+  .basis b { color: var(--ink); }
+  .graphwrap { border: 1px solid var(--border); background: var(--surface); border-radius: 3px; overflow: hidden; }
+  .gbar { display: flex; flex-wrap: wrap; gap: 14px 18px; align-items: center; padding: 11px 14px; border-bottom: 1px solid var(--border); background: var(--surface-2); }
+  .glabel { font-family: var(--mono); font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); }
+  .seg { display: inline-flex; border: 1px solid var(--border-2); border-radius: 3px; overflow: hidden; }
+  .seg button { font-family: var(--mono); font-size: 11.5px; padding: 5px 11px; border: 0; cursor: pointer; background: var(--surface); color: var(--ink-2); }
+  .seg button + button { border-left: 1px solid var(--border-2); }
+  .seg button[aria-pressed="true"] { background: var(--ink); color: var(--bg); }
+  .seg button:focus-visible, .gbtn:focus-visible { outline: 2px solid var(--cat-1); outline-offset: -2px; }
+  .gbtn { font-family: var(--mono); font-size: 11.5px; padding: 5px 11px; cursor: pointer; background: var(--surface); color: var(--ink-2); border: 1px solid var(--border-2); border-radius: 3px; }
+  .gkeys { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-left: auto; }
+  .gkey { display: inline-flex; align-items: center; gap: 6px; font-family: var(--mono); font-size: 11px; color: var(--ink-2); white-space: nowrap; }
+  .gkey i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+  #gcanvas { display: block; width: 100%; height: 580px; touch-action: none; cursor: grab; }
+  #gcanvas.dragging { cursor: grabbing; }
+  @media (max-width: 620px) { #gcanvas { height: 440px; } }
+  .gdetail { border-top: 1px solid var(--border); padding: 14px 16px; min-height: 96px; }
+  .dname { font-family: var(--mono); font-size: 14px; font-weight: 600; margin-bottom: 3px; display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+  .dmeta { font-family: var(--mono); font-size: 11px; color: var(--ink-3); margin-bottom: 9px; }
+  .ddesc { font-size: 13.5px; color: var(--ink-2); margin-bottom: 10px; max-width: 70ch; }
+  .dedges { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 620px) { .dedges { grid-template-columns: 1fr; } }
+  .dedges h4 { font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); margin: 0 0 5px; }
+  .dedges ul { list-style: none; margin: 0; padding: 0; font-family: var(--mono); font-size: 12px; }
+  .dedges li { color: var(--ink-2); padding: 1.5px 0; }
+  .empty { color: var(--ink-3); font-size: 13px; font-style: italic; margin: 0; }
+  .gdot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; flex: 0 0 auto; }
+  .methodnote { margin-top: 16px; border-top: 1px solid var(--border); padding-top: 12px; }
+  .methodnote summary {
+    cursor: pointer; font-family: var(--mono); font-size: 11.5px; color: var(--ink-3);
+    letter-spacing: .04em;
+  }
+  .methodnote summary:hover { color: var(--ink-2); }
+  .methodnote p { font-size: 13px; color: var(--ink-2); max-width: 70ch; margin: 10px 0 0; }
+  .legendnote { font-size: 12.5px; color: var(--ink-3); margin-top: 10px; font-family: var(--mono); }
+  #tip {
+    position: fixed; z-index: 50; pointer-events: none; opacity: 0; transition: opacity .1s ease;
+    background: var(--ink); color: var(--bg); font-family: var(--mono); font-size: 11.5px;
+    line-height: 1.5; padding: 7px 10px; border-radius: 4px; max-width: 260px;
+  }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <p class="eyebrow" id="hdr-eyebrow">Dependency graph</p>
+  <h1 id="hdr-title">Dependency Graph</h1>
+  <p class="basis" id="hdr-basis"></p>
+
+  <div class="graphwrap">
+    <div class="gbar">
+      <span class="glabel">Colour by</span>
+      <span class="seg" role="group" aria-label="Colour nodes by">
+        <button id="mode-layer" aria-pressed="true">Layer</button>
+        <button id="mode-owner" aria-pressed="false">Owner</button>
+        <button id="mode-live" aria-pressed="false" hidden>Knowledge</button>
+      </span>
+      <label class="gkey" id="surprise-wrap" hidden>
+        <input type="checkbox" id="surprise-toggle" checked> unexplained co-change
+      </label>
+      <label class="gkey" id="depart-wrap" hidden>
+        if this person leaves
+        <select id="depart" class="gbtn"><option value="">nobody</option></select>
+      </label>
+      <button class="gbtn" id="greset">Reset layout</button>
+      <span class="gkeys" id="gkeys"></span>
+    </div>
+    <canvas id="gcanvas" role="img" aria-label="Force-directed dependency graph"></canvas>
+    <div class="gdetail" id="gdetail"></div>
+  </div>
+  <details class="methodnote">
+    <summary>How this graph was built, and what it cannot see</summary>
+    <p id="hdr-note"></p>
+  </details>
+</div>
+<div id="tip" role="status" aria-live="polite"></div>
+
+<script>
+/* ===================== __STRATA_DATA__ — replace this whole block ===================== */
+var META = {
+  title: "Dependency Graph",
+  eyebrow: "Example data",
+  ref: "origin/main @ 0000000",
+  generated: "replace me",
+  note: "Replace META, GROUPS, OWNERS, N and E with your own data, then run scripts/validate-graph.mjs."
+};
+var GROUPS = { fe: "Frontend", api: "Routes", svc: "Services", data: "Models & DB" };
+var OWNERS = { alice: "Alice", bob: "Bob", none: "External" };
+var N = [
+  ["app.html",      "fe",   "alice", "Page shell. Loads the frontend scripts."],
+  ["app.js",        "fe",   "alice", "Client application: router and views."],
+  ["server.py",     "api",  "bob",   "HTTP entry point and route surface."],
+  ["analytics.py",  "svc",  "bob",   "Domain logic for the analytics endpoints."],
+  ["db.py",         "data", "bob",   "Database handle. Imported by everything that persists."]
+];
+var E = [[0,1],[1,2],[2,3],[3,4],[2,4]];
+/* =================== end __STRATA_DATA__ =================== */
+
+(function () {
+  var canvas = document.getElementById('gcanvas');
+  var ctx = canvas.getContext('2d');
+  var detail = document.getElementById('gdetail');
+  var keysBox = document.getElementById('gkeys');
+  var tip = document.getElementById('tip');
+
+  document.getElementById('hdr-title').textContent = META.title || 'Dependency Graph';
+  document.title = META.title || 'Dependency Graph';
+  if (META.eyebrow) document.getElementById('hdr-eyebrow').textContent = META.eyebrow;
+  document.getElementById('hdr-basis').innerHTML =
+    (META.ref ? '<span>ref <b>' + META.ref + '</b></span>' : '') +
+    '<span><b>' + N.length + '</b> nodes · <b>' + E.length + '</b> edges</span>' +
+    (META.generated ? '<span>generated <b>' + META.generated + '</b></span>' : '');
+  document.getElementById('hdr-note').textContent = META.note || '';
+
+  // Optional overlays. A plain graph without them still renders; these are what
+  // make it show something a conventional dependency graph cannot.
+  var SURPRISE = (typeof window.SURPRISE !== 'undefined') ? window.SURPRISE : [];
+  var DEPARTURE = (typeof window.DEPARTURE !== 'undefined') ? window.DEPARTURE : {};
+  var PEOPLE = (typeof window.PEOPLE !== 'undefined') ? window.PEOPLE : [];
+  var HAS_LIVE = N.length > 0 && N[0].length > 4;
+
+  var CAT = ['--cat-1', '--cat-2', '--cat-3', '--cat-4'];
+  var gkeys = Object.keys(GROUPS), okeys = Object.keys(OWNERS);
+  var mode = 'layer', C = {};
+
+  function readTheme() {
+    var cs = getComputedStyle(document.documentElement);
+    function v(n) { return (cs.getPropertyValue(n) || '').trim(); }
+    C = { ink: v('--ink'), ink2: v('--ink-2'), ink3: v('--ink-3'), surface: v('--surface'),
+          signal: v('--signal'), alarm: v('--alarm'), live: v('--cat-1') };
+    gkeys.forEach(function (k, i) { C['g:' + k] = v(CAT[i % CAT.length]); });
+    okeys.forEach(function (k, i) {
+      C['o:' + k] = (k === 'none') ? v('--ink-3') : v(CAT[i % CAT.length]);
+    });
+  }
+
+  var nodes = N.map(function (d, i) {
+    return { i: i, label: d[0], group: d[1], owner: d[2], desc: d[3] || '',
+             live: d.length > 4 ? d[4] : null, commits: d.length > 5 ? d[5] : null,
+             nobodyLeft: d.length > 6 ? !!d[6] : false,
+             ownerActive: d.length > 7 ? !!d[7] : true,
+             x: 0, y: 0, vx: 0, vy: 0, deg: 0, inn: [], out: [], fixed: false, r: 6 };
+  });
+  E.forEach(function (e) {
+    if (!nodes[e[0]] || !nodes[e[1]]) return;
+    nodes[e[0]].deg++; nodes[e[1]].deg++;
+    nodes[e[0]].out.push(e[1]); nodes[e[1]].inn.push(e[0]);
+  });
+  nodes.forEach(function (n) { n.r = Math.min(17, 4.5 + Math.sqrt(n.deg) * 2.5); });
+
+  var W = 0, H = 0, dpr = 1, alpha = 0, raf = null;
+  var REP = 2800, SPRING = 0.013, LEN = 72, GRAV = 0.0016, DAMP = 0.85;
+
+  function seed() {
+    var cx = W / 2, cy = H / 2;
+    nodes.forEach(function (n, k) {
+      var a = (k / nodes.length) * Math.PI * 2;
+      var rad = Math.min(W, H) * (0.18 + 0.26 * ((k * 7919 % 100) / 100));
+      n.x = cx + Math.cos(a) * rad; n.y = cy + Math.sin(a) * rad;
+      n.vx = 0; n.vy = 0; n.fixed = false;
+    });
+  }
+  function resize() {
+    var rect = canvas.getBoundingClientRect();
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var nw = Math.max(320, rect.width), nh = Math.max(300, rect.height);
+    var first = (W === 0);
+    canvas.width = Math.round(nw * dpr); canvas.height = Math.round(nh * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    if (first || Math.abs(nw - W) > 60) { W = nw; H = nh; seed(); run(1); }
+    else { W = nw; H = nh; draw(); }
+  }
+  function tick() {
+    var i, j, a, b, dx, dy, d2, d, f, ux, uy;
+    for (i = 0; i < nodes.length; i++) {
+      a = nodes[i];
+      for (j = i + 1; j < nodes.length; j++) {
+        b = nodes[j];
+        dx = b.x - a.x; dy = b.y - a.y; d2 = dx * dx + dy * dy;
+        if (d2 < 0.01) { dx = Math.random() - .5; dy = Math.random() - .5; d2 = 0.01; }
+        if (d2 > 90000) continue;
+        d = Math.sqrt(d2); f = REP / d2; ux = dx / d; uy = dy / d;
+        a.vx -= ux * f; a.vy -= uy * f; b.vx += ux * f; b.vy += uy * f;
+      }
+    }
+    for (i = 0; i < E.length; i++) {
+      a = nodes[E[i][0]]; b = nodes[E[i][1]];
+      if (!a || !b) continue;
+      dx = b.x - a.x; dy = b.y - a.y; d = Math.sqrt(dx * dx + dy * dy) || 0.01;
+      f = (d - LEN) * SPRING;
+      a.vx += (dx / d) * f; a.vy += (dy / d) * f;
+      b.vx -= (dx / d) * f; b.vy -= (dy / d) * f;
+    }
+    var cx = W / 2, cy = H / 2;
+    for (i = 0; i < nodes.length; i++) {
+      a = nodes[i];
+      a.vx += (cx - a.x) * GRAV; a.vy += (cy - a.y) * GRAV;
+      if (a.fixed) { a.vx = 0; a.vy = 0; continue; }
+      a.vx *= DAMP; a.vy *= DAMP;
+      a.x += a.vx * alpha; a.y += a.vy * alpha;
+      var pad = a.r + 16;
+      a.x = Math.max(pad, Math.min(W - pad, a.x));
+      a.y = Math.max(pad, Math.min(H - pad, a.y));
+    }
+  }
+  function run(start) {
+    if (raf) cancelAnimationFrame(raf);
+    alpha = start;
+    var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    var decay = start >= 1 ? 0.993 : 0.96, steps = start >= 1 ? 3 : 2;
+    if (reduce) {
+      for (var k = 0; k < 420; k++) { tick(); alpha *= 0.991; }
+      alpha = 0; draw(); return;
+    }
+    (function loop() {
+      for (var s = 0; s < steps; s++) { tick(); alpha *= decay; }
+      draw();
+      if (alpha > 0.02) raf = requestAnimationFrame(loop); else { alpha = 0; raf = null; }
+    })();
+  }
+
+  var hover = null, sel = null, drag = null;
+  function colorOf(n) {
+    if (mode === 'liveness') return n.live === null ? C.ink3 : C.live;
+    return mode === 'layer' ? C['g:' + n.group] : C['o:' + n.owner];
+  }
+  // Liveness is a MAGNITUDE, so it gets one hue at varying strength rather than a
+  // second categorical scale. A node nobody active still understands is drawn
+  // hollow with an alarm ring, so "load-bearing but knowledge-dead" reads as a
+  // large empty circle instead of hiding inside a colour.
+  function fillAlpha(n) {
+    if (mode !== 'liveness' || n.live === null) return 1;
+    return 0.12 + 0.88 * n.live;
+  }
+  var departed = null;   // person selected in the "if this person leaves" control
+  function departedSet() {
+    return (departed && DEPARTURE[departed]) ? new Set(DEPARTURE[departed]) : null;
+  }
+  function related(n) {
+    if (!n) return null;
+    var s = {}; s[n.i] = 1;
+    n.inn.forEach(function (k) { s[k] = 1; });
+    n.out.forEach(function (k) { s[k] = 1; });
+    return s;
+  }
+  function draw() {
+    ctx.clearRect(0, 0, W, H);
+    var focus = sel || hover, near = related(focus);
+    var dset = departedSet();
+
+    // SURPRISE EDGES first, under everything: significant co-change with no import
+    // path. Dashed and in the reserved signal colour so they never collide with
+    // whatever the categorical mode is doing.
+    if (showSurprise && SURPRISE.length) {
+      ctx.save();
+      ctx.setLineDash([4, 4]);
+      ctx.strokeStyle = C.signal;
+      for (var s = 0; s < SURPRISE.length; s++) {
+        var sa = nodes[SURPRISE[s][0]], sb = nodes[SURPRISE[s][1]];
+        if (!sa || !sb) continue;
+        var lit = focus && (sa.i === focus.i || sb.i === focus.i);
+        ctx.globalAlpha = lit ? 0.95 : (focus ? 0.1 : 0.42);
+        ctx.lineWidth = lit ? 2 : 1.2;
+        ctx.beginPath(); ctx.moveTo(sa.x, sa.y); ctx.lineTo(sb.x, sb.y); ctx.stroke();
+      }
+      ctx.restore();
+      ctx.globalAlpha = 1;
+    }
+
+    for (var i = 0; i < E.length; i++) {
+      var a = nodes[E[i][0]], b = nodes[E[i][1]];
+      if (!a || !b) continue;
+      var on = focus && (a.i === focus.i || b.i === focus.i);
+      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
+      if (on) { ctx.strokeStyle = colorOf(focus); ctx.globalAlpha = .75; ctx.lineWidth = 1.6; }
+      else { ctx.strokeStyle = C.ink3; ctx.globalAlpha = focus ? .07 : .22; ctx.lineWidth = 1; }
+      ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    for (var k = 0; k < nodes.length; k++) {
+      var n = nodes[k];
+      var dim = (near && !near[n.i]) ? .16 : 1;
+      if (dset) dim = dset.has(n.i) ? 1 : 0.14;      // departure mode: only the casualties stay lit
+      ctx.globalAlpha = dim;
+      ctx.beginPath(); ctx.arc(n.x, n.y, n.r, 0, Math.PI * 2);
+      ctx.globalAlpha = dim * fillAlpha(n);
+      ctx.fillStyle = colorOf(n); ctx.fill();
+      ctx.globalAlpha = dim;
+      ctx.lineWidth = 2; ctx.strokeStyle = C.surface; ctx.stroke();
+      // a node nobody active understands gets an alarm ring in every mode
+      if (n.nobodyLeft || (dset && dset.has(n.i))) {
+        ctx.beginPath(); ctx.arc(n.x, n.y, n.r + 2.5, 0, Math.PI * 2);
+        ctx.strokeStyle = C.alarm; ctx.lineWidth = 1.6; ctx.stroke();
+      }
+      if (focus && n.i === focus.i) {
+        ctx.beginPath(); ctx.arc(n.x, n.y, n.r + 4.5, 0, Math.PI * 2);
+        ctx.strokeStyle = colorOf(n); ctx.lineWidth = 1.5; ctx.globalAlpha = .6; ctx.stroke();
+      }
+      ctx.globalAlpha = 1;
+    }
+    ctx.font = '500 10.5px "IBM Plex Mono", monospace';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+    var big = Math.max(5, Math.round(nodes.length / 9));
+    for (var m = 0; m < nodes.length; m++) {
+      var o = nodes[m];
+      if (!(o.deg >= big || (near && near[o.i]))) continue;
+      var dim = (near && !near[o.i]) ? .18 : 1;
+      var ly = o.y + o.r + 4, tw = ctx.measureText(o.label).width;
+      ctx.globalAlpha = dim * .82; ctx.fillStyle = C.surface;
+      ctx.fillRect(o.x - tw / 2 - 3, ly - 1, tw + 6, 13);
+      ctx.globalAlpha = dim;
+      ctx.fillStyle = (focus && o.i === focus.i) ? C.ink : C.ink2;
+      ctx.fillText(o.label, o.x, ly);
+    }
+    ctx.globalAlpha = 1;
+  }
+  function pick(mx, my) {
+    var best = null, bd = 1e9;
+    for (var i = 0; i < nodes.length; i++) {
+      var n = nodes[i], dx = mx - n.x, dy = my - n.y, d = Math.sqrt(dx * dx + dy * dy);
+      if (d < n.r + 9 && d < bd) { bd = d; best = n; }
+    }
+    return best;
+  }
+  function pos(ev) { var r = canvas.getBoundingClientRect(); return { x: ev.clientX - r.left, y: ev.clientY - r.top }; }
+  function renderDetail(n) {
+    if (!n) {
+      detail.innerHTML = '<p class="empty">Hover a node to inspect it, or click to isolate its dependencies. Node size is proportional to how many modules it connects to.</p>';
+      return;
+    }
+    function names(list) {
+      if (!list.length) return '<li style="color:var(--ink-3)">none</li>';
+      return list.map(function (k) { return '<li>' + nodes[k].label + '</li>'; }).join('');
+    }
+    detail.innerHTML =
+      '<div class="dname"><span class="gdot" style="background:' + colorOf(n) + '"></span>' + n.label + '</div>' +
+      '<div class="dmeta">' + (GROUPS[n.group] || n.group) + ' · ' + (OWNERS[n.owner] || n.owner) +
+      (n.ownerActive ? '' : ' (departed)') +
+      ' · ' + n.out.length + ' out / ' + n.inn.length + ' in' +
+      (n.commits !== null ? ' · ' + n.commits + ' commits' : '') +
+      (n.live !== null ? ' · ' + Math.round(n.live * 100) + '% knowledge still held' : '') +
+      (n.nobodyLeft ? ' · NOBODY ACTIVE HAS TOUCHED THIS' : '') + '</div>' +
+      (n.desc ? '<div class="ddesc">' + n.desc + '</div>' : '') +
+      '<div class="dedges"><div><h4>Depends on &rarr;</h4><ul>' + names(n.out) +
+      '</ul></div><div><h4>&larr; Depended on by</h4><ul>' + names(n.inn) + '</ul></div></div>';
+  }
+  canvas.addEventListener('pointermove', function (ev) {
+    var p = pos(ev);
+    if (drag) {
+      drag.x = Math.max(drag.r + 16, Math.min(W - drag.r - 16, p.x));
+      drag.y = Math.max(drag.r + 16, Math.min(H - drag.r - 16, p.y));
+      if (!raf) draw();
+      return;
+    }
+    var n = pick(p.x, p.y);
+    if (n !== hover) { hover = n; if (!sel) renderDetail(n); if (!raf) draw(); }
+    if (n) {
+      tip.innerHTML = '<b>' + n.label + '</b><br>' + (GROUPS[n.group] || n.group) + ' · ' +
+                      (OWNERS[n.owner] || n.owner) + '<br>' + n.out.length + ' out / ' + n.inn.length + ' in';
+      tip.style.opacity = '1';
+      var pad = 14, r = tip.getBoundingClientRect();
+      var x = ev.clientX + pad, y = ev.clientY + pad;
+      if (x + r.width > window.innerWidth - 8) x = ev.clientX - r.width - pad;
+      if (y + r.height > window.innerHeight - 8) y = ev.clientY - r.height - pad;
+      tip.style.left = Math.max(8, x) + 'px'; tip.style.top = Math.max(8, y) + 'px';
+    } else tip.style.opacity = '0';
+  });
+  canvas.addEventListener('pointerdown', function (ev) {
+    var p = pos(ev), n = pick(p.x, p.y);
+    if (n) {
+      drag = n; n.fixed = true;
+      canvas.classList.add('dragging');
+      try { canvas.setPointerCapture(ev.pointerId); } catch (e) {}
+      sel = (sel && sel.i === n.i) ? null : n;
+      renderDetail(sel || n);
+    } else { sel = null; renderDetail(null); }
+    draw();
+  });
+  canvas.addEventListener('pointerup', function (ev) {
+    if (drag) { drag.fixed = false; drag = null; }
+    canvas.classList.remove('dragging');
+    try { canvas.releasePointerCapture(ev.pointerId); } catch (e) {}
+    if (!raf) run(0.25);
+  });
+  canvas.addEventListener('pointerleave', function () {
+    hover = null; tip.style.opacity = '0';
+    if (!sel) renderDetail(null);
+    draw();
+  });
+
+  function buildKeys() {
+    if (mode === 'liveness') {
+      keysBox.innerHTML =
+        '<span class="gkey"><i style="background:' + C.live + '"></i>knowledge still held</span>' +
+        '<span class="gkey"><i style="background:' + C.live + ';opacity:.18"></i>faded = knowledge lost</span>' +
+        '<span class="gkey"><i style="background:transparent;border:1.5px solid ' + C.alarm + '"></i>nobody active</span>';
+      return;
+    }
+    var src = mode === 'layer'
+      ? gkeys.map(function (k) { return ['g:' + k, GROUPS[k]]; })
+      : okeys.map(function (k) { return ['o:' + k, OWNERS[k]]; });
+    keysBox.innerHTML = src.map(function (s) {
+      return '<span class="gkey"><i style="background:' + C[s[0]] + '"></i>' + s[1] + '</span>';
+    }).join('') + (SURPRISE.length
+      ? '<span class="gkey"><i style="background:' + C.signal + ';border-radius:0;height:2px;width:14px"></i>unexplained co-change</span>' : '');
+  }
+  function setMode(m) {
+    mode = m;
+    document.getElementById('mode-layer').setAttribute('aria-pressed', String(m === 'layer'));
+    document.getElementById('mode-owner').setAttribute('aria-pressed', String(m === 'owner'));
+    var lb = document.getElementById('mode-live');
+    if (lb) lb.setAttribute('aria-pressed', String(m === 'liveness'));
+    buildKeys(); renderDetail(sel || hover); draw();
+  }
+  document.getElementById('mode-layer').addEventListener('click', function () { setMode('layer'); });
+  document.getElementById('mode-owner').addEventListener('click', function () { setMode('owner'); });
+  var liveBtn = document.getElementById('mode-live');
+  if (HAS_LIVE) { liveBtn.hidden = false; liveBtn.addEventListener('click', function () { setMode('liveness'); }); }
+
+  var showSurprise = true;
+  if (SURPRISE.length) {
+    document.getElementById('surprise-wrap').hidden = false;
+    document.getElementById('surprise-toggle').addEventListener('change', function (e) {
+      showSurprise = e.target.checked; draw();
+    });
+  }
+  if (PEOPLE.length) {
+    var dwrap = document.getElementById('depart-wrap');
+    var dsel = document.getElementById('depart');
+    dwrap.hidden = false;
+    PEOPLE.forEach(function (p) {
+      var o = document.createElement('option');
+      o.value = p;
+      o.textContent = p + ' (+' + ((DEPARTURE[p] || []).length) + ')';
+      dsel.appendChild(o);
+    });
+    dsel.addEventListener('change', function (e) {
+      departed = e.target.value || null;
+      renderDetail(sel || hover); draw();
+    });
+  }
+  document.getElementById('greset').addEventListener('click', function () {
+    sel = null; hover = null; renderDetail(null); seed(); run(1);
+  });
+
+  function onTheme() { readTheme(); buildKeys(); renderDetail(sel || hover); draw(); }
+  try { window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', onTheme); } catch (e) {}
+  new MutationObserver(onTheme).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+
+  readTheme(); buildKeys(); renderDetail(null);
+  if (window.ResizeObserver) new ResizeObserver(resize).observe(canvas);
+  else window.addEventListener('resize', resize);
+  resize();
+})();
+</script>

@@ -1,0 +1,24 @@
+schema_version: "1.1"
+name: quantifies-knowledge-loss-risk
+expected_outcome: |
+  The response quantifies the loss rather than describing it qualitatively, and
+  compares the two active contributors with specific figures.
+
+  Ground truth for this fixture (9 files; Dana and Eli active; Morgan departed in
+  2024 and legacy.py is already abandoned before anyone else leaves):
+
+    Dana resigning  -> 6 of 9 files end up effectively abandoned
+    Eli  resigning  -> 3 of 9
+    7 of the 9 files have no second substantive contributor
+
+  So Dana is the larger risk, by roughly double. The response names that
+  asymmetry with numbers attached.
+
+  Crucially it applies an ABANDONMENT THRESHOLD rather than counting everything
+  the person has touched: shared.py is split 3/3 between Dana and Eli and
+  therefore SURVIVES either departure, and the response should not list it as
+  lost. Treating every file a departing person touched as lost is the specific
+  error this case tests for.
+
+context:
+  scaffold_script: place-files.sh

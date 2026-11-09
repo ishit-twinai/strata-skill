@@ -1,0 +1,12 @@
+schema_version: "1.1"
+name: detects-stale-local-refs
+expected_outcome: |
+  Before reporting any architecture, the run establishes which ref it should
+  analyse and notices that the checked-out main is 2 commits behind origin/main.
+  It either analyses origin/main instead, or flags the discrepancy to the user and
+  says which ref its findings describe. It does not silently analyse the stale
+  checked-out HEAD and present the result as current.
+  The response names the analysed ref alongside its findings.
+
+context:
+  scaffold_script: place-files.sh
