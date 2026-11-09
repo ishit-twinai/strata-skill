@@ -4,7 +4,8 @@
 // Usage:
 //   node brief.mjs "<task description>" [--ref <ref>] [--repo <dir>] [--map <ids.tsv>]
 //                  [--anchor <path>]...        # override the provisional anchors
-//                  [--top 5] [--depth 3] [--min-support 3] [--max-p 0.05]
+//                  [--top 3] [--depth 3] [--min-support 3] [--max-p 0.05]
+//                  [--include-tests]           # tests are excluded from anchors by default
 //                  [--format json|text]
 //
 // WHAT THIS IS FOR
@@ -48,12 +49,22 @@ const all = (n) => argv.reduce((acc, a, i) => (a === `--${n}` && argv[i + 1] ? [
 const REF = opt('ref', 'HEAD');
 const REPO = opt('repo', '.');
 const MAP = opt('map');
-const TOP = Number(opt('top', '5'));
+const TOP = Number(opt('top', '3'));
 const DEPTH = Number(opt('depth', '3'));
 const MIN_SUPPORT = Number(opt('min-support', '3'));
 const MAX_P = Number(opt('max-p', '0.05'));
 const FORMAT = opt('format', 'text');
 const EXPLICIT = all('anchor');
+const INCLUDE_TESTS = argv.includes('--include-tests');
+
+// A test file named after the thing it tests scores highly on every term the task
+// mentions, and is almost never where the change belongs. Worse, anchoring on one
+// drags its imports into the read set: on a real repo, anchoring on a shared-chart
+// test pulled auth models, token services and the Flask entry point into "what to
+// read before changing chart colours". Excluded by default; --include-tests when
+// the task really is about the tests.
+const isTestPath = (f) =>
+  /(^|\/)(tests?|spec|__tests__)\//.test(f) || /[._](test|spec)\./.test(f) || /_harness\./.test(f);
 
 if (!TASK && !EXPLICIT.length) {
   console.error('usage: node brief.mjs "<task description>" [--anchor <path>]...');
@@ -85,6 +96,7 @@ function anchorCandidates() {
   const ev = new Map();
   const bump = (f, n, why) => {
     if (isNoise(f)) return;
+    if (!INCLUDE_TESTS && isTestPath(f)) return;
     score.set(f, (score.get(f) ?? 0) + n);
     if (!ev.has(f)) ev.set(f, []);
     ev.get(f).push(why);
@@ -98,24 +110,40 @@ function anchorCandidates() {
     }
   }
 
-  // 2. content mentions, via git grep (fast, and built for exactly this)
-  if (terms.length) {
-    const args = ['grep', '-c', '-I', '-i'];
-    for (const t of terms) args.push('-e', t);
-    args.push(REF);
+  // 2. TERM COVERAGE, not raw mention count.
+  //
+  // Counting total mentions and capping the score makes a file with 793 hits
+  // score the same as one with 167 - the cap destroys discrimination precisely
+  // among the top candidates. Worse, raw volume rewards whichever file happens to
+  // say "chart" most often, not the file this task is about.
+  //
+  // What actually separates them is how many DISTINCT task terms a file matches.
+  // For "make chart colours consistent when the theme changes", the renderer
+  // mentions chart AND colour AND theme; the chart-planning service mentions
+  // chart constantly and the other two never. Coverage finds that; volume does not.
+  const coverage = new Map();
+  const mentions = new Map();
+  for (const term of terms) {
     let out = '';
-    try { out = git(...args); } catch { /* no matches -> exit 1 */ }
+    try { out = git('grep', '-c', '-I', '-i', '-e', term, REF); } catch { continue; }
     for (const line of out.split('\n')) {
       if (!line.trim()) continue;
-      // format: <ref>:<path>:<count>
       const firstColon = line.indexOf(':');
       const lastColon = line.lastIndexOf(':');
       if (firstColon < 0 || lastColon <= firstColon) continue;
       const path = line.slice(firstColon + 1, lastColon);
       const count = Number(line.slice(lastColon + 1));
       if (!Number.isFinite(count) || !count) continue;
-      bump(path, Math.min(8, Math.log2(1 + count) * 2), `${count} term mention(s)`);
+      coverage.set(path, (coverage.get(path) ?? 0) + 1);
+      mentions.set(path, (mentions.get(path) ?? 0) + count);
     }
+  }
+  for (const [path, covered] of coverage) {
+    // superlinear in coverage so matching 3 of 5 terms clearly beats matching 1,
+    // with volume kept only as a small tiebreak among equal coverage
+    const frac = covered / Math.max(1, terms.length);
+    bump(path, 10 * Math.pow(frac, 1.5) + Math.min(2.5, Math.log2(1 + (mentions.get(path) ?? 0)) / 4),
+      `matches ${covered}/${terms.length} task terms (${mentions.get(path)} mentions)`);
   }
 
   // 3. a DEFINITION named after a task term outranks a passing mention
@@ -131,10 +159,14 @@ function anchorCandidates() {
     } catch { /* none */ }
   }
 
-  // 4. structural centrality — a hub is a likelier anchor than a leaf
+  // 4. structural centrality — a hub is a likelier anchor than a leaf, and a file
+  // nothing references at all is usually a prototype or a scratch page rather than
+  // the thing you are being asked to change.
   for (const f of graph.files) {
+    if (!score.has(f)) continue;
     const deg = (graph.out.get(f)?.size ?? 0) + (graph.inn.get(f)?.size ?? 0);
-    if (deg >= 3 && score.has(f)) bump(f, Math.min(4, deg / 2), `${deg} graph edges`);
+    if (deg >= 3) bump(f, Math.min(4, deg / 2), `${deg} graph edges`);
+    else if (deg === 0) bump(f, -4, 'nothing references this (prototype or scratch?)');
   }
 
   // 5. recently touched code is likelier to be what the task means
@@ -165,6 +197,7 @@ for (const a of anchors) {
   readSet.push({ path: a, reason: 'the change target itself', depth: 0, commits: o?.commits ?? 0 });
 }
 for (const [p, d] of upstream) {
+  if (!INCLUDE_TESTS && isTestPath(p)) continue;
   readSet.push({ path: p, reason: `the target depends on this (depth ${d})`, depth: d });
 }
 // tests referencing an anchor by basename
@@ -186,9 +219,13 @@ for (const f of graph.files) {
 // states it more usefully than most: d=1 will break, d=2 likely, d=3 worth testing.
 const downstream = reach(graph, anchors, 'down', DEPTH);
 const VERDICT = { 1: 'WILL BREAK', 2: 'LIKELY AFFECTED', 3: 'MAY NEED TESTING' };
-const impactSet = [...downstream.entries()]
-  .map(([path, depth]) => ({ path, depth, verdict: VERDICT[depth] ?? 'DISTANT' }))
+const impactAll = [...downstream.entries()]
+  .map(([path, depth]) => ({ path, depth, verdict: VERDICT[depth] ?? 'DISTANT', test: isTestPath(path) }))
   .sort((a, b) => a.depth - b.depth || a.path.localeCompare(b.path));
+// A test depending on the thing you change is expected, not fallout. Mixing them
+// in buries the production breakage under a list of tests that will obviously fail.
+const impactSet = impactAll.filter((i) => !i.test);
+const impactTests = impactAll.filter((i) => i.test);
 
 // SURPRISE: co-change partners the graph does not explain, Fisher-gated.
 const surpriseSet = [];
@@ -237,6 +274,7 @@ const out = {
   },
   read_set: dedupe(readSet),
   impact_set: impactSet,
+  tests_affected: impactTests,
   surprise_set: surpriseSet,
   ownership: ownershipRows,
   flags: {
@@ -287,10 +325,20 @@ if (FORMAT === 'json') {
 
   line(`\n── READ SET (${out.read_set.length}) — understand these before changing anything`);
   for (const r of out.read_set.slice(0, 15)) line(`  ${r.path}\n      ${r.reason}`);
+  if (out.read_set.length > 25) {
+    line(`\n  ${out.read_set.length} files is too many to read, which means the anchors are too`);
+    line('  broad. Narrow them: re-run with --anchor on the one or two files the task');
+    line('  really means. A read set you will not read is worse than none.');
+  }
 
   line(`\n── IMPACT SET (${out.impact_set.length}) — what breaks`);
-  if (!out.impact_set.length) line('  nothing depends on the anchors in the static graph');
+  if (!out.impact_set.length) line('  nothing in production depends on the anchors in the static graph');
   for (const i of out.impact_set.slice(0, 15)) line(`  d=${i.depth}  ${i.verdict.padEnd(16)}  ${i.path}`);
+  if (out.tests_affected.length) {
+    line(`\n  + ${out.tests_affected.length} test file(s) cover this — expected to fail, not fallout:`);
+    for (const i of out.tests_affected.slice(0, 6)) line(`      ${i.path}`);
+    if (out.tests_affected.length > 6) line(`      … and ${out.tests_affected.length - 6} more`);
+  }
 
   line(`\n── SURPRISE SET (${out.surprise_set.length}) — co-changes the graph does not explain`);
   if (!out.surprise_set.length) line('  none above the significance threshold');
