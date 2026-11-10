@@ -215,6 +215,20 @@ for (const [arr, a, want] of [
   check(`nearest-rank percentile a=${a} [${arr}] = ${want}`, arr[nearestRank(arr.length, a)], want);
 }
 
+// ───────────────────────────────── propagation cost
+console.log('\n── Propagation Cost / core-periphery (MacCormack 2006)');
+const pc = json(node('propagation-cost.mjs', ['--repo', MET, '--points', '4', '--format', 'json']));
+const pcLast = pc?.series?.[pc.series.length - 1];
+// By hand on the fixture: connected files are gamma, delta, epsilon, zeta.
+// gamma->delta and epsilon->zeta, acyclic. Reachable pairs = 2, so PC = 2/4^2.
+check('fixture Propagation Cost = 2/16', pcLast?.propagation_cost, 0.125, near);
+check('fixture has 4 connected files', pcLast?.files, 4);
+check('fixture has 2 edges', pcLast?.edges, 2);
+check('fixture is acyclic (no SCC > 1)', pcLast?.core_size, 0);
+check('sampling is position-based, not date-based', pc?.sampled_by, 'linear');
+check('scale-sensitivity caveat is carried',
+  (pc?.caveats ?? []).some((c) => /scale-sensitive/i.test(c)), true);
+
 // ───────────────────────────────── the change brief
 console.log('\n── change brief: the three planted controls');
 const brief = (args) => json(node('brief.mjs', [...args, '--repo', MET, '--format', 'json']));

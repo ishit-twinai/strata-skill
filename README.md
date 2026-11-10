@@ -66,7 +66,7 @@ files"; the closest prior art ships each half as a *separate command that never 
 
 ## The research metrics
 
-Four metrics with precise published definitions and — verified against the serious tools in this
+Five metrics with precise published definitions and — verified against the serious tools in this
 space in Nov 2026 — **no open-source implementation anywhere**.
 
 ```bash
@@ -99,6 +99,18 @@ can carry a modest KaR and a severe ES. The authors published **pseudocode only*
 [2019 survey](https://homepages.dcc.ufmg.br/~mtov/pub/2019-sqj.pdf) confirms no public
 implementation, and that was still true on re-verification. Small sample spaces are enumerated
 exactly rather than sampled; larger ones use a seeded PRNG, so results are reproducible.
+
+**Propagation Cost + core-periphery** — [MacCormack, Rusnak & Baldwin, Management Science 2006](https://www.hbs.edu/ris/Publication%20Files/08-039_1861e507-1dc1-4602-85b8-90d71559d85b.pdf);
+[Baldwin, MacCormack & Rusnak, *Hidden Structure*, 2014](https://dash.harvard.edu/bitstream/handle/1/10646422/baldwin,maccormack,rusnak_hidden-structure.pdf)
+The average fraction of the system a random change can reach, plus the largest dependency cycle,
+**trended across history**. Static-analysis tools compute the graph without history; history tools
+compute churn without a graph — both halves are needed and neither ships this as a time series.
+Deliberately omitted: Decoupling Level (Mo et al., ICSE 2016) is
+[patent-encumbered](https://patents.google.com/patent/WO2017106863A1/en).
+
+```bash
+node scripts/propagation-cost.mjs --at monthly --no-tests
+```
 
 Every figure ships with its caveats attached. `references/metrics.md` carries the formulas,
 citations, and what each paper did and did not show.

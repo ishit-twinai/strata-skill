@@ -14,6 +14,7 @@ ownership maps *are* — those are deliberately not reimplemented here.
 - [B2 Decay-weighted knowledge](#b2--decay-weighted-knowledge)
 - [B3 Orphaned code](#b3--orphaned-code)
 - [B4 Knowledge at Risk and Expected Shortfall](#b4--knowledge-at-risk-and-expected-shortfall)
+- [B5 Propagation Cost and core-periphery](#b5--propagation-cost-and-core-periphery)
 - [Co-change and the surprise set](#co-change-and-the-surprise-set)
 - [Deliberately not implemented](#deliberately-not-implemented)
 - [Arithmetic that goes wrong](#arithmetic-that-goes-wrong)
@@ -138,6 +139,42 @@ as effective (up to ~15% reduction in expected loss).
 Run: `node knowledge-at-risk.mjs --blame blame.tsv --alpha 0.95`
 
 ---
+
+## B5 — Propagation Cost and core-periphery
+
+**MacCormack, Rusnak & Baldwin.** *Exploring the Structure of Complex Software Designs.*
+Management Science 2006.
+<https://www.hbs.edu/ris/Publication%20Files/08-039_1861e507-1dc1-4602-85b8-90d71559d85b.pdf>
+**Baldwin, MacCormack & Rusnak.** *Hidden Structure.* 2014.
+<https://dash.harvard.edu/bitstream/handle/1/10646422/baldwin,maccormack,rusnak_hidden-structure.pdf>
+
+```
+V    = transitive closure of the dependency matrix
+PC   = density(V) = reachable pairs / N^2
+Core = largest strongly connected component (files that can reach themselves)
+VFI(f) = files that can reach f        VFO(f) = files f can reach
+quadrants: Hub (high both) · Shared (high VFI) · Control (high VFO) · Periphery (low both)
+```
+
+PC answers *"if I change something at random, how much of this system can the change reach?"*
+Trended across history it is an erosion curve: a rising PC means the architecture is losing its
+ability to contain change.
+
+**Read it next to the file count, always.** PC is scale-sensitive — a repository that doubles in
+size can show a *falling* PC while absolute coupling rises. Observed in practice: a codebase went
+22 → 73 files with edges rising 27 → 111, and PC fell 0.089 → 0.035. Coupling quadrupled while the
+ratio halved; reporting the ratio alone would have been actively misleading.
+
+**Sampling is by position in the first-parent chain, not by date.** Author dates stop tracking
+commit order after any rebase or cherry-pick, so date-bucketed snapshots can land at an arbitrary
+point in history — on a fixture with deliberately out-of-order dates, date sampling measured a
+two-file graph as the latest state of a four-file repo. `--at monthly` buckets by *committer* date
+along first-parent, for when evenly spaced positions cluster badly in time.
+
+Neither metric appears as a time series in any tool found: static-analysis tools build the graph
+without history, and history tools measure churn without a graph.
+
+Run: `node propagation-cost.mjs --at monthly --no-tests`
 
 ## Co-change and the surprise set
 

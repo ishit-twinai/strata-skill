@@ -82,7 +82,7 @@ lines are there so you can see that happening rather than trusting a number.
 
 ## Research metrics
 
-Four metrics with published definitions and no open-source implementation anywhere. Full formulas,
+Five metrics with published definitions and no open-source implementation anywhere. Full formulas,
 citations and caveats in `references/metrics.md`; cite the paper whenever you report a figure.
 
 ```
@@ -100,6 +100,13 @@ node scripts/knowledge-at-risk.mjs --blame blame.tsv
 - **Knowledge at Risk + Expected Shortfall** (ICSE 2016) — Value-at-Risk for knowledge loss. The
   authors published pseudocode only; nothing implements it. ES is the point: KaR bounds the tail,
   ES weighs it.
+- **Propagation Cost + core-periphery** (Management Science 2006; Hidden Structure 2014) — how far
+  a random change can reach through the system, trended across history. Read it beside the file
+  count: a repo that doubles in size can show a falling PC while absolute coupling rises.
+
+```
+node scripts/propagation-cost.mjs --at monthly --no-tests
+```
 
 Report these with their caveats attached, not as scores. Two related metrics are deliberately
 **not** implemented because the literature has null results on them, and one is patent-encumbered —
