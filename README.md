@@ -239,7 +239,7 @@ Stated plainly, because a tool that hides its limits is worse than one that lack
 ## Install
 
 ```bash
-git clone https://github.com/<you>/strata-skill ~/.claude/skills/strata
+git clone https://github.com/ia4226/strata-skill ~/.claude/skills/strata
 ```
 
 **The destination directory must be named `strata`**, not `strata-skill` — a skill is
@@ -281,6 +281,13 @@ references/                   metrics · pitfalls · prior-art · methodology
 tests/run.mjs                 68 known-answer assertions
 evals/                        5 cases in `claude plugin eval` format
 ```
+
+## Where this lives
+
+- <https://github.com/ia4226/strata-skill> — canonical
+- <https://github.com/ishit-twinai/strata-skill> — mirror
+
+Both carry the same history; pushes go to both.
 
 ## License
 
