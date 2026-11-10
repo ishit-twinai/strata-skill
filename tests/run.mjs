@@ -20,7 +20,7 @@
 // expectation - the fixtures are the specification.
 
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -214,6 +214,27 @@ for (const [arr, a, want] of [
 ]) {
   check(`nearest-rank percentile a=${a} [${arr}] = ${want}`, arr[nearestRank(arr.length, a)], want);
 }
+
+// ───────────────────────────────── make-report
+console.log('\n── make-report: one command to a finished page');
+const outDir = join(WORK, 'report');
+const rep = node('make-report.mjs', ['--repo', MET, '--out', outDir]);
+check('make-report exits 0', rep.code, 0);
+let page = '';
+try { page = readFileSync(join(outDir, 'graph.html'), 'utf8'); } catch {}
+check('writes graph.html', page.length > 1000, true);
+check('writes graph.json', (() => { try { return !!JSON.parse(readFileSync(join(outDir, 'graph.json'), 'utf8')); } catch { return false; } })(), true);
+// the template ships with placeholder data; a report that still contains it has
+// not been populated, which is the exact failure this script exists to prevent
+check('placeholder example data is gone', /app\.html|"Alice"|__STRATA_DATA__/.test(page), false);
+check('real fixture content is present', page.includes('core.py'), true);
+check('injected script still parses', (() => {
+  const m = /\n<script>\n([\s\S]*)\n<\/script>/.exec(page);
+  if (!m) return false;
+  try { new Function(m[1]); return true; } catch { return false; }
+})(), true);
+check('a missing --map fails cleanly, not with a stack trace',
+  node('make-report.mjs', ['--repo', MET, '--map', join(WORK, 'nope.tsv')]).out.split('\n')[0].startsWith('strata:'), true);
 
 // ───────────────────────────────── propagation cost
 console.log('\n── Propagation Cost / core-periphery (MacCormack 2006)');

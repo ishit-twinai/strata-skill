@@ -121,9 +121,17 @@ Three deliverables unless the user narrows the scope:
    classification of every source file.
 2. **`CONTRIBUTORS.md`** — identity consolidation, era timeline, per-person domain ownership and
    architectural legacy, and an ownership-heat table naming who to ask today.
-3. **An interactive artifact** — a published page with a force-directed dependency graph
-   (draggable, click-to-isolate) that can recolour by *layer* or by *owner*, plus contributor
-   charts. Use `assets/force-graph.html` as the starting template.
+3. **An interactive knowledge graph** — produced by one command, not assembled by hand:
+
+   ```
+   node scripts/make-report.mjs --map ids.tsv --blame blame.tsv
+   ```
+
+   Writes `strata-out/graph.html` (open it in a browser) and `strata-out/graph.json`.
+   The page overlays solid import edges, dashed *unexplained co-change* edges, node fill by
+   how much knowledge is still held by someone active, and an "if this person leaves"
+   selector. For a PDF, open the page and print it — bundling a browser engine would cost
+   more than it is worth.
 
 Ask which of the three they want before building all of them; a user who only wants to know who
 owns the auth code does not need an artifact.

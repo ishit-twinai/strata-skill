@@ -34,6 +34,18 @@ node scripts/brief.mjs "change how invoice totals are rounded"
   ⚠ primary owner departed: billing/totals.py (A. Rivera)
 ```
 
+And one command turns the whole repository into an interactive knowledge graph:
+
+```bash
+node scripts/make-report.mjs --map ids.tsv --blame blame.tsv
+# → strata-out/graph.html   open it in a browser
+```
+
+Solid edges are imports. **Dashed edges are pairs that co-change with no import path between
+them** — coupling the code does not express. Node fill shows how much of what is known about a
+file is still held by someone active, so a large hollow circle is load-bearing code nobody left
+understands. And an "if this person leaves" selector lights up what their departure would orphan.
+
 A skill for Claude Code and compatible agents. **Zero dependencies** — git, a POSIX shell, and
 Node's standard library. No npm packages, no network, nothing to install, nothing phones home.
 
