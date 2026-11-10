@@ -127,7 +127,8 @@ Three deliverables unless the user narrows the scope:
    node scripts/make-report.mjs --map ids.tsv --blame blame.tsv
    ```
 
-   Writes `strata-out/graph.html` (open it in a browser) and `strata-out/graph.json`.
+   Writes `strata-out/graph.html` and `strata-out/graph.json`, and opens the page.
+   It skips opening in CI, on a headless box, or with `--no-open`, and says which.
    The page overlays solid import edges, dashed *unexplained co-change* edges, node fill by
    how much knowledge is still held by someone active, and an "if this person leaves"
    selector. For a PDF, open the page and print it — bundling a browser engine would cost

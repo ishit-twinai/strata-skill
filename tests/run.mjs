@@ -218,7 +218,7 @@ for (const [arr, a, want] of [
 // ───────────────────────────────── make-report
 console.log('\n── make-report: one command to a finished page');
 const outDir = join(WORK, 'report');
-const rep = node('make-report.mjs', ['--repo', MET, '--out', outDir]);
+const rep = node('make-report.mjs', ['--repo', MET, '--out', outDir, '--no-open']);
 check('make-report exits 0', rep.code, 0);
 let page = '';
 try { page = readFileSync(join(outDir, 'graph.html'), 'utf8'); } catch {}
@@ -233,8 +233,10 @@ check('injected script still parses', (() => {
   if (!m) return false;
   try { new Function(m[1]); return true; } catch { return false; }
 })(), true);
+check('--no-open is honoured (tests must not spawn browsers)',
+  /not opened \(--no-open\)/.test(rep.out), true);
 check('a missing --map fails cleanly, not with a stack trace',
-  node('make-report.mjs', ['--repo', MET, '--map', join(WORK, 'nope.tsv')]).out.split('\n')[0].startsWith('strata:'), true);
+  node('make-report.mjs', ['--repo', MET, '--map', join(WORK, 'nope.tsv'), '--no-open']).out.split('\n')[0].startsWith('strata:'), true);
 
 // ───────────────────────────────── propagation cost
 console.log('\n── Propagation Cost / core-periphery (MacCormack 2006)');

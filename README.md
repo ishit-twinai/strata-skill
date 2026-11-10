@@ -38,8 +38,12 @@ And one command turns the whole repository into an interactive knowledge graph:
 
 ```bash
 node scripts/make-report.mjs --map ids.tsv --blame blame.tsv
-# → strata-out/graph.html   open it in a browser
+# → strata-out/graph.html   opens in your browser
 ```
+
+It opens the page for you. It will not do that when it would be wrong — in CI, on a
+headless Linux box with no display, or with `--no-open` — and says which, rather than
+silently doing nothing. The path is printed either way.
 
 Solid edges are imports. **Dashed edges are pairs that co-change with no import path between
 them** — coupling the code does not express. Node fill shows how much of what is known about a
