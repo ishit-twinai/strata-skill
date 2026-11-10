@@ -4,7 +4,7 @@ Every metric here has a published definition and a citation. Quote the citation 
 number — it is what separates this from a dashboard of invented scores, and it tells a reader what
 the figure has and has not been shown to predict.
 
-Verified 2026-11 against the serious tools in the category (`prior-art.md`): none of B1–B4 below
+Verified 2026-11 against the serious tools in the category (`prior-art.md`): none of B1–B5 below
 is implemented in any open-source tool. Plain temporal coupling, bus factor, hotspots and
 ownership maps *are* — those are deliberately not reimplemented here.
 
